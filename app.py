@@ -126,10 +126,15 @@ HTML_TEMPLATE = r"""
       <div id="fig2t" style="width:100%; height:260px;"></div>
     </div>
   </div>
-  <div style="margin:14px 0; display:flex; align-items:center; gap:12px;">
+  <div style="margin:14px 0; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
     <button id="playBtn" style="background:#2b2f38; color:#fafafa; border:1px solid #555; border-radius:6px; padding:6px 16px; cursor:pointer; font-size:14px;">▶ Animar</button>
-    <input id="timeSlider" type="range" min="0" max="40" step="0.1" value="0" style="flex:1;">
+    <input id="timeSlider" type="range" min="0" max="40" step="0.1" value="0" style="flex:1; min-width:160px;">
     <span id="timeLabel" style="min-width:70px; font-size:13px; color:#bbb;">0.0 ms</span>
+    <label style="font-size:13px; color:#bbb; display:flex; align-items:center; gap:6px;">
+      Velocidad
+      <input id="speedSlider" type="range" min="0.02" max="1" step="0.02" value="0.12" style="width:100px;">
+      <span id="speedLabel">0.12×</span>
+    </label>
   </div>
   <div id="tabla" style="margin-top:6px;"></div>
 </div>
@@ -363,15 +368,18 @@ function tablaHtml(s) {
 
 // --- control de animación (100% client-side, sin llamadas a Streamlit) ---
 let animando = false, lastFrameTime = null, tMs = 0;
+let velocidad = 0.015;   // ms simulados por ms real; ciclo completo (40ms) ≈ 2.7 s reales
 const playBtn = document.getElementById('playBtn');
 const timeSlider = document.getElementById('timeSlider');
+const speedSlider = document.getElementById('speedSlider');
+const speedLabel = document.getElementById('speedLabel');
 
 function frame(now) {
   if (!animando) return;
   if (lastFrameTime === null) lastFrameTime = now;
   const dtMs = now - lastFrameTime;
   lastFrameTime = now;
-  tMs = (tMs + dtMs * 0.9) % 40;   // velocidad de la animación
+  tMs = (tMs + dtMs * velocidad) % 40;
   timeSlider.value = tMs;
   render(tMs);
   requestAnimationFrame(frame);
@@ -387,6 +395,15 @@ playBtn.addEventListener('click', () => {
 timeSlider.addEventListener('input', () => {
   if (!animando) { tMs = parseFloat(timeSlider.value); render(tMs); }
 });
+
+speedSlider.addEventListener('input', () => {
+  // el slider va de 0.02 a 1 (escala cómoda para el usuario); se remapea
+  // a un rango de velocidad real mucho más lento para que se aprecie el giro.
+  const uiVal = parseFloat(speedSlider.value);
+  velocidad = uiVal * 0.05;
+  speedLabel.textContent = uiVal.toFixed(2) + '×';
+});
+speedSlider.dispatchEvent(new Event('input'));
 
 render(0);
 </script>
