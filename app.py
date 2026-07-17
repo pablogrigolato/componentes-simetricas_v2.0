@@ -43,7 +43,7 @@ def slider_con_numero(label, base_key, min_v, max_v, default, step=1, fmt=None):
     col_s, col_n = st.columns([3, 2])
     col_s.slider(label, min_v, max_v, key=f"{base_key}_sld", step=step,
                   on_change=_sync_from_slider, args=(base_key,), label_visibility="visible")
-    col_n.number_input(" ", min_v, max_v, key=f"{base_key}_num", step=step, format=fmt,
+    col_n.number_input(f"{label} (valor exacto)", min_v, max_v, key=f"{base_key}_num", step=step, format=fmt,
                          on_change=_sync_from_number, args=(base_key,), label_visibility="collapsed")
     return st.session_state[f"{base_key}_sld"]
 
@@ -166,11 +166,13 @@ function componentesSimetricas(VA, VB, VC) {
   return [V0, V1, V2];
 }
 
-function onda(V, tArrayMs) {
-  return tArrayMs.map(tms => {
-    const t = tms / 1000;
-    return V.re * Math.cos(OMEGA*t) - V.im * Math.sin(OMEGA*t);
-  });
+// Onda temporal física v(t) = mag·cos(ωt + ang), calculada desde el fasor
+// ESTÁTICO (no el rotado por la animación). Así la forma de onda es fija y
+// el marcador vertical en t_anim lee exactamente Re{fasor giratorio}.
+function ondaEstatica(V0complex, tArrayMs) {
+  const mag = cAbs(V0complex);
+  const ang = Math.atan2(V0complex.im, V0complex.re);
+  return tArrayMs.map(tms => mag * Math.cos(OMEGA * (tms/1000) + ang));
 }
 
 const T_ARRAY = [];
@@ -217,6 +219,62 @@ function tresFases(base, tipo, color, labelBase) {
 
 let plotsInitialized = false;
 
+// ------------------------------------------------------------------
+// Ondas temporales: son FIJAS durante la animación (una senoidal de
+// 50 Hz no cambia de forma; sólo se mueve el marcador de tiempo).
+// Se calculan una única vez desde los fasores estáticos (t = 0) y se
+// dibujan con newPlot una sola vez; en cada frame sólo se reubica el
+// marcador vertical con Plotly.relayout, que es muy barato.
+// ------------------------------------------------------------------
+const CF = P.colorFase, CS = P.colorSeq;
+const VA_EST = crearFasor(P.magA, P.angA, 0);
+const VB_EST = crearFasor(P.magB, P.angB, 0);
+const VC_EST = crearFasor(P.magC, P.angC, 0);
+const [S0, S1, S2] = componentesSimetricas(VA_EST, VB_EST, VC_EST);
+const Y_WAVE = Math.max(cAbs(VA_EST), cAbs(VB_EST), cAbs(VC_EST), 1) * 1.2;
+
+function markerShape(tMs) {
+  return {type:'line', x0:tMs, x1:tMs, y0:-Y_WAVE, y1:Y_WAVE,
+          line:{color:'rgba(255,255,255,0.5)', width:1, dash:'dash'}};
+}
+
+const FIG1T_TRACES = [
+  {x:T_ARRAY, y:ondaEstatica(VA_EST, T_ARRAY), mode:'lines', line:{color:CF.A}, name:'VA'},
+  {x:T_ARRAY, y:ondaEstatica(VB_EST, T_ARRAY), mode:'lines', line:{color:CF.B}, name:'VB'},
+  {x:T_ARRAY, y:ondaEstatica(VC_EST, T_ARRAY), mode:'lines', line:{color:CF.C}, name:'VC'},
+];
+
+const FIG2T_TRACES = [];
+{
+  const estilos = ['solid','dash','dot'];
+  const letras = ['A','B','C'];
+  [['V₁ Positiva', S1, 'pos'], ['V₂ Negativa', S2, 'neg'], ['V₀ Homopolar', S0, 'hom']].forEach(([nombre, base, tipo]) => {
+    const color = CS[tipo];
+    let fases;
+    if (tipo==='pos') fases=[base, cMul(base,ALPHA2), cMul(base,ALPHA)];
+    else if (tipo==='neg') fases=[base, cMul(base,ALPHA), cMul(base,ALPHA2)];
+    else fases=[base, base, base];
+    fases.forEach((V,i) => {
+      FIG2T_TRACES.push({x:T_ARRAY, y:ondaEstatica(V, T_ARRAY), mode:'lines',
+                         line:{color:color, dash:estilos[i]}, name:`${nombre} Fase ${letras[i]}`});
+    });
+  });
+}
+
+const FIG1T_LAYOUT = Object.assign({}, BASE_LAYOUT, {
+  title:{text:'Evolución temporal — desbalanceado', font:{size:13}},
+  xaxis: Object.assign({}, AX_STYLE, {title:'Tiempo (ms)'}),
+  yaxis: Object.assign({}, AX_STYLE, {title:'Amplitud'}),
+  shapes:[markerShape(0)],
+});
+const FIG2T_LAYOUT = Object.assign({}, BASE_LAYOUT, {
+  title:{text:'Evolución temporal — secuencias', font:{size:13}},
+  xaxis: Object.assign({}, AX_STYLE, {title:'Tiempo (ms)'}),
+  yaxis: AX_STYLE,
+  legend: {font:{size:8}},
+  shapes:[markerShape(0)],
+});
+
 function computeState(tMs) {
   const t = tMs / 1000;
   const VA = crearFasor(P.magA, P.angA, t);
@@ -228,7 +286,7 @@ function computeState(tMs) {
   if (P.escalaManual > 0) { lim = P.escalaManual; }
   else {
     const maxMag = Math.max(cAbs(VA), cAbs(VB), cAbs(VC), cAbs(V0), cAbs(V1), cAbs(V2), 1.0);
-    lim = Math.ceil(maxMag / 10.0) * 12.0;
+    lim = Math.ceil(maxMag * 1.15 / 10.0) * 10.0;   // 15% de margen, redondeado a decenas
   }
   const desbalance = cAbs(V1) > 1e-9 ? (cAbs(V2)/cAbs(V1))*100 : 0;
   return {t, VA, VB, VC, V0, V1, V2, lim, desbalance};
@@ -280,55 +338,23 @@ function render(tMs) {
     legend: {font:{size:8}},
   });
 
-  // --- fig1t: onda temporal desbalanceada ---
-  const fig1tTraces = [
-    {x:T_ARRAY, y:onda(s.VA, T_ARRAY), mode:'lines', line:{color:cf.A}, name:'VA'},
-    {x:T_ARRAY, y:onda(s.VB, T_ARRAY), mode:'lines', line:{color:cf.B}, name:'VB'},
-    {x:T_ARRAY, y:onda(s.VC, T_ARRAY), mode:'lines', line:{color:cf.C}, name:'VC'},
-  ];
-  const fig1tLayout = Object.assign({}, BASE_LAYOUT, {
-    title:{text:'Evolución temporal — desbalanceado', font:{size:13}},
-    xaxis: Object.assign({}, AX_STYLE, {title:'Tiempo (ms)'}),
-    yaxis: Object.assign({}, AX_STYLE, {title:'Amplitud'}),
-    shapes:[{type:'line', x0:tMs, x1:tMs, y0:-150, y1:150, line:{color:'rgba(255,255,255,0.5)', width:1, dash:'dash'}}],
-  });
-
-  // --- fig2t: onda temporal secuencias ---
-  const estilos = ['solid','dash','dot'];
-  const letras = ['A','B','C'];
-  const fig2tTraces = [];
-  [['V₁ Positiva', s.V1, 'pos'], ['V₂ Negativa', s.V2, 'neg'], ['V₀ Homopolar', s.V0, 'hom']].forEach(([nombre, base, tipo]) => {
-    const color = cs[tipo];
-    let fases;
-    if (tipo==='pos') fases=[base, cMul(base,ALPHA2), cMul(base,ALPHA)];
-    else if (tipo==='neg') fases=[base, cMul(base,ALPHA), cMul(base,ALPHA2)];
-    else fases=[base, base, base];
-    fases.forEach((V,i) => {
-      fig2tTraces.push({x:T_ARRAY, y:onda(V, T_ARRAY), mode:'lines', line:{color:color, dash:estilos[i]}, name:`${nombre} Fase ${letras[i]}`});
-    });
-  });
-  const fig2tLayout = Object.assign({}, BASE_LAYOUT, {
-    title:{text:'Evolución temporal — secuencias', font:{size:13}},
-    xaxis: Object.assign({}, AX_STYLE, {title:'Tiempo (ms)'}),
-    yaxis: AX_STYLE,
-    legend: {font:{size:8}},
-    shapes:[{type:'line', x0:tMs, x1:tMs, y0:-150, y1:150, line:{color:'rgba(255,255,255,0.5)', width:1, dash:'dash'}}],
-  });
-
   const config = {displaylogo:false, responsive:true};
 
   if (!plotsInitialized) {
     Plotly.newPlot('fig1', fig1traces, fig1layout, config);
     Plotly.newPlot('fig2', fig2traces, fig2layout, config);
-    Plotly.newPlot('fig1t', fig1tTraces, fig1tLayout, config);
-    Plotly.newPlot('fig2t', fig2tTraces, fig2tLayout, config);
+    // Las ondas temporales se dibujan UNA sola vez (son estáticas).
+    Plotly.newPlot('fig1t', FIG1T_TRACES, FIG1T_LAYOUT, config);
+    Plotly.newPlot('fig2t', FIG2T_TRACES, FIG2T_LAYOUT, config);
     plotsInitialized = true;
   } else {
     Plotly.react('fig1', fig1traces, fig1layout, config);
     Plotly.react('fig2', fig2traces, fig2layout, config);
-    Plotly.react('fig1t', fig1tTraces, fig1tLayout, config);
-    Plotly.react('fig2t', fig2tTraces, fig2tLayout, config);
   }
+
+  // En cada frame sólo se mueve el marcador vertical de las ondas.
+  Plotly.relayout('fig1t', {shapes:[markerShape(tMs)]});
+  Plotly.relayout('fig2t', {shapes:[markerShape(tMs)]});
 
   // --- tabla ---
   document.getElementById('tabla').innerHTML = tablaHtml(s);
@@ -368,7 +394,10 @@ function tablaHtml(s) {
 
 // --- control de animación (100% client-side, sin llamadas a Streamlit) ---
 let animando = false, lastFrameTime = null, tMs = 0;
-let velocidad = 0.015;   // ms simulados por ms real; ciclo completo (40ms) ≈ 2.7 s reales
+// "velocidad" = ms simulados por ms real. El valor efectivo lo fija el
+// slider de velocidad (uiVal × 0.05); con el valor por defecto 0.12×
+// resulta 0.006 → un ciclo completo de 40 ms tarda ≈ 6.7 s reales.
+let velocidad = 0.12 * 0.05;
 const playBtn = document.getElementById('playBtn');
 const timeSlider = document.getElementById('timeSlider');
 const speedSlider = document.getElementById('speedSlider');
