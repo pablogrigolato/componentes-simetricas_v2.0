@@ -1,7 +1,6 @@
 import streamlit as st
 import numpy as np
 import plotly.graph_objects as go
-import time
 
 st.set_page_config(
     page_title="Fasores Dinámicos y Componentes Simétricas",
@@ -172,26 +171,7 @@ st.sidebar.markdown("---")
 st.sidebar.caption("Desarrollado para el análisis didáctico de componentes simétricas (Fortescue).")
 
 # ------------------------------------------------------------------
-# Cálculo
-# ------------------------------------------------------------------
-t = st.session_state.t_ms / 1000.0
-
-VA = crear_fasor(mag_A, ang_A, t)
-VB = crear_fasor(mag_B, ang_B, t)
-VC = crear_fasor(mag_C, ang_C, t)
-V0, V1, V2 = componentes_simetricas(VA, VB, VC)
-
-if escala_manual > 0:
-    lim = float(escala_manual)
-else:
-    max_mag = max(np.abs(VA), np.abs(VB), np.abs(VC), np.abs(V0), np.abs(V1), np.abs(V2), 1.0)
-    lim = float(np.ceil(max_mag / 10.0) * 12.0)
-
-# Grado de desbalance (NEMA / IEC): |V2|/|V1| * 100
-desbalance_pct = (np.abs(V2) / np.abs(V1) * 100) if np.abs(V1) > 1e-9 else 0.0
-
-# ------------------------------------------------------------------
-# Encabezado
+# Encabezado (estático, fuera del fragment)
 # ------------------------------------------------------------------
 st.title("⚡ Fasores Dinámicos y Componentes Simétricas")
 st.caption(
@@ -199,85 +179,113 @@ st.caption(
     "en componentes de secuencia positiva, negativa y homopolar (método de Fortescue)."
 )
 
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("|V₀| (homopolar)", f"{np.abs(V0):.2f}")
-m2.metric("|V₁| (positiva)", f"{np.abs(V1):.2f}")
-m3.metric("|V₂| (negativa)", f"{np.abs(V2):.2f}")
-m4.metric("Grado de desbalance", f"{desbalance_pct:.1f} %",
-          help="Relación |V₂|/|V₁| × 100, según la definición NEMA/IEC.")
-
-st.markdown("")
 
 # ------------------------------------------------------------------
-# Layout principal
+# Bloque dinámico: métricas + gráficos + tabla.
+# Se ejecuta como fragment aislado para que, al animar, sólo esta
+# parte se vuelva a dibujar (sin recrear sliders ni recargar la
+# página completa), evitando el parpadeo de re-render total.
 # ------------------------------------------------------------------
-col1, col2 = st.columns(2)
+@st.fragment(run_every=0.08 if animar else None)
+def render_simulacion():
+    if animar:
+        st.session_state.t_ms = (st.session_state.t_ms + 0.7) % 40.0
 
-T = 1 / F_HZ
-t_array = np.linspace(0, 2 * T, 800)
+    t = st.session_state.t_ms / 1000.0
 
-with col1:
-    fig1 = fasor_diagram(lim, "Sistema desbalanceado (fasores)")
-    for nombre, V in zip(["A", "B", "C"], [VA, VB, VC]):
-        agregar_fasor(fig1, V, color=COLOR_FASE[nombre], dash="solid", label=f"V{nombre}")
-    st.plotly_chart(fig1, use_container_width=True, config={"displaylogo": False})
+    VA = crear_fasor(mag_A, ang_A, t)
+    VB = crear_fasor(mag_B, ang_B, t)
+    VC = crear_fasor(mag_C, ang_C, t)
+    V0, V1, V2 = componentes_simetricas(VA, VB, VC)
 
-    fig1t = go.Figure()
-    for nombre, V in zip(["A", "B", "C"], [VA, VB, VC]):
-        fig1t.add_trace(go.Scatter(x=t_array * 1000, y=onda(V, t_array), mode="lines",
-                                    line=dict(color=COLOR_FASE[nombre]), name=f"V{nombre}"))
-    fig1t.add_vline(x=t * 1000, line_width=1, line_dash="dash", line_color="rgba(0,0,0,0.5)")
-    fig1t.update_layout(title="Evolución temporal — sistema desbalanceado",
-                         xaxis_title="Tiempo (ms)", yaxis_title="Amplitud",
-                         height=300, margin=dict(l=20, r=20, t=40, b=20))
-    st.plotly_chart(fig1t, use_container_width=True, config={"displaylogo": False})
+    if escala_manual > 0:
+        lim = float(escala_manual)
+    else:
+        max_mag = max(np.abs(VA), np.abs(VB), np.abs(VC), np.abs(V0), np.abs(V1), np.abs(V2), 1.0)
+        lim = float(np.ceil(max_mag / 10.0) * 12.0)
 
-with col2:
-    fig2 = fasor_diagram(lim, "Componentes simétricas (tres fases)")
-    dibujar_tres_fases(fig2, V1, "pos", COLOR_SEQ["pos"], "V₁ Positiva")
-    dibujar_tres_fases(fig2, V2, "neg", COLOR_SEQ["neg"], "V₂ Negativa")
-    dibujar_tres_fases(fig2, V0, "hom", COLOR_SEQ["hom"], "V₀ Homopolar")
-    st.plotly_chart(fig2, use_container_width=True, config={"displaylogo": False})
+    desbalance_pct = (np.abs(V2) / np.abs(V1) * 100) if np.abs(V1) > 1e-9 else 0.0
 
-    fig2t = go.Figure()
-    estilos = ["-", "--", ":"]
-    sec = [
-        ("V₁ Positiva", V1, "pos"),
-        ("V₂ Negativa", V2, "neg"),
-        ("V₀ Homopolar", V0, "hom"),
-    ]
-    for nombre, base, tipo in sec:
-        color = COLOR_SEQ[tipo]
-        if tipo == "pos":
-            fases = [base, base * ALPHA**2, base * ALPHA]
-        elif tipo == "neg":
-            fases = [base, base * ALPHA, base * ALPHA**2]
-        else:
-            fases = [base, base, base]
-        for i, V in enumerate(fases):
-            fig2t.add_trace(go.Scatter(x=t_array * 1000, y=onda(V, t_array), mode="lines",
-                                        line=dict(color=color, dash=DASH[estilos[i]]),
-                                        name=f"{nombre} Fase {['A', 'B', 'C'][i]}"))
-    fig2t.add_vline(x=t * 1000, line_width=1, line_dash="dash", line_color="rgba(0,0,0,0.5)")
-    fig2t.update_layout(title="Evolución temporal — secuencias",
-                         xaxis_title="Tiempo (ms)",
-                         height=300, margin=dict(l=20, r=20, t=40, b=20),
-                         legend=dict(font=dict(size=9)))
-    st.plotly_chart(fig2t, use_container_width=True, config={"displaylogo": False})
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("|V₀| (homopolar)", f"{np.abs(V0):.2f}")
+    m2.metric("|V₁| (positiva)", f"{np.abs(V1):.2f}")
+    m3.metric("|V₂| (negativa)", f"{np.abs(V2):.2f}")
+    m4.metric("Grado de desbalance", f"{desbalance_pct:.1f} %",
+              help="Relación |V₂|/|V₁| × 100, según la definición NEMA/IEC.")
 
-# ------------------------------------------------------------------
-# Valores instantáneos + tabla exportable
-# ------------------------------------------------------------------
-st.markdown("### 🧮 Valores instantáneos (fase A de cada secuencia)")
-tabla = {
-    "Componente": ["V₀ (homopolar)", "V₁ (positiva)", "V₂ (negativa)"],
-    "Magnitud": [np.round(np.abs(V0), 3), np.round(np.abs(V1), 3), np.round(np.abs(V2), 3)],
-    "Ángulo (°)": [np.round(np.angle(V0, deg=True), 2),
-                   np.round(np.angle(V1, deg=True), 2),
-                   np.round(np.angle(V2, deg=True), 2)],
-    "Valor complejo": [f"{V0:.3f}", f"{V1:.3f}", f"{V2:.3f}"],
-}
-st.dataframe(tabla, use_container_width=True, hide_index=True)
+    st.markdown("")
+
+    col1, col2 = st.columns(2)
+
+    T = 1 / F_HZ
+    t_array = np.linspace(0, 2 * T, 800)
+
+    with col1:
+        fig1 = fasor_diagram(lim, "Sistema desbalanceado (fasores)")
+        for nombre, V in zip(["A", "B", "C"], [VA, VB, VC]):
+            agregar_fasor(fig1, V, color=COLOR_FASE[nombre], dash="solid", label=f"V{nombre}")
+        st.plotly_chart(fig1, use_container_width=True, config={"displaylogo": False},
+                         key="fig1")
+
+        fig1t = go.Figure()
+        for nombre, V in zip(["A", "B", "C"], [VA, VB, VC]):
+            fig1t.add_trace(go.Scatter(x=t_array * 1000, y=onda(V, t_array), mode="lines",
+                                        line=dict(color=COLOR_FASE[nombre]), name=f"V{nombre}"))
+        fig1t.add_vline(x=t * 1000, line_width=1, line_dash="dash", line_color="rgba(0,0,0,0.5)")
+        fig1t.update_layout(title="Evolución temporal — sistema desbalanceado",
+                             xaxis_title="Tiempo (ms)", yaxis_title="Amplitud",
+                             height=300, margin=dict(l=20, r=20, t=40, b=20))
+        st.plotly_chart(fig1t, use_container_width=True, config={"displaylogo": False},
+                         key="fig1t")
+
+    with col2:
+        fig2 = fasor_diagram(lim, "Componentes simétricas (tres fases)")
+        dibujar_tres_fases(fig2, V1, "pos", COLOR_SEQ["pos"], "V₁ Positiva")
+        dibujar_tres_fases(fig2, V2, "neg", COLOR_SEQ["neg"], "V₂ Negativa")
+        dibujar_tres_fases(fig2, V0, "hom", COLOR_SEQ["hom"], "V₀ Homopolar")
+        st.plotly_chart(fig2, use_container_width=True, config={"displaylogo": False},
+                         key="fig2")
+
+        fig2t = go.Figure()
+        estilos = ["-", "--", ":"]
+        sec = [
+            ("V₁ Positiva", V1, "pos"),
+            ("V₂ Negativa", V2, "neg"),
+            ("V₀ Homopolar", V0, "hom"),
+        ]
+        for nombre, base, tipo in sec:
+            color = COLOR_SEQ[tipo]
+            if tipo == "pos":
+                fases = [base, base * ALPHA**2, base * ALPHA]
+            elif tipo == "neg":
+                fases = [base, base * ALPHA, base * ALPHA**2]
+            else:
+                fases = [base, base, base]
+            for i, V in enumerate(fases):
+                fig2t.add_trace(go.Scatter(x=t_array * 1000, y=onda(V, t_array), mode="lines",
+                                            line=dict(color=color, dash=DASH[estilos[i]]),
+                                            name=f"{nombre} Fase {['A', 'B', 'C'][i]}"))
+        fig2t.add_vline(x=t * 1000, line_width=1, line_dash="dash", line_color="rgba(0,0,0,0.5)")
+        fig2t.update_layout(title="Evolución temporal — secuencias",
+                             xaxis_title="Tiempo (ms)",
+                             height=300, margin=dict(l=20, r=20, t=40, b=20),
+                             legend=dict(font=dict(size=9)))
+        st.plotly_chart(fig2t, use_container_width=True, config={"displaylogo": False},
+                         key="fig2t")
+
+    st.markdown("### 🧮 Valores instantáneos (fase A de cada secuencia)")
+    tabla = {
+        "Componente": ["V₀ (homopolar)", "V₁ (positiva)", "V₂ (negativa)"],
+        "Magnitud": [np.round(np.abs(V0), 3), np.round(np.abs(V1), 3), np.round(np.abs(V2), 3)],
+        "Ángulo (°)": [np.round(np.angle(V0, deg=True), 2),
+                       np.round(np.angle(V1, deg=True), 2),
+                       np.round(np.angle(V2, deg=True), 2)],
+        "Valor complejo": [f"{V0:.3f}", f"{V1:.3f}", f"{V2:.3f}"],
+    }
+    st.dataframe(tabla, use_container_width=True, hide_index=True)
+
+
+render_simulacion()
 
 with st.expander("ℹ️ ¿Cómo se calculan las componentes simétricas?"):
     st.latex(r"""
@@ -291,11 +299,3 @@ with st.expander("ℹ️ ¿Cómo se calculan las componentes simétricas?"):
         "El **grado de desbalance** se define como la relación entre la magnitud de la "
         "componente de secuencia negativa y la positiva, expresada en porcentaje."
     )
-
-# ------------------------------------------------------------------
-# Animación (avanza el tiempo automáticamente)
-# ------------------------------------------------------------------
-if animar:
-    st.session_state.t_ms = (st.session_state.t_ms + 0.6) % 40.0
-    time.sleep(0.05)
-    st.rerun()
