@@ -115,18 +115,18 @@ params = dict(
 
 HTML_TEMPLATE = r"""
 <div id="app" style="font-family: 'Source Sans Pro', sans-serif; color: #fafafa;">
-  <div id="metrics" style="display:flex; gap:14px; margin-bottom:10px; flex-wrap:wrap;"></div>
+  <div id="metrics" style="display:flex; gap:14px; margin-bottom:6px; flex-wrap:wrap;"></div>
   <div style="display:flex; gap:16px; flex-wrap:wrap;">
     <div style="flex:1; min-width:340px;">
-      <div id="fig1" style="width:100%; height:420px;"></div>
-      <div id="fig1t" style="width:100%; height:260px;"></div>
+      <div id="fig1" style="width:100%; height:400px;"></div>
+      <div id="fig1t" style="width:100%; height:240px;"></div>
     </div>
     <div style="flex:1; min-width:340px;">
-      <div id="fig2" style="width:100%; height:420px;"></div>
-      <div id="fig2t" style="width:100%; height:260px;"></div>
+      <div id="fig2" style="width:100%; height:400px;"></div>
+      <div id="fig2t" style="width:100%; height:240px;"></div>
     </div>
   </div>
-  <div style="margin:14px 0; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+  <div style="margin:8px 0 10px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
     <button id="playBtn" style="background:#2b2f38; color:#fafafa; border:1px solid #555; border-radius:6px; padding:6px 16px; cursor:pointer; font-size:14px;">▶ Animar</button>
     <input id="timeSlider" type="range" min="0" max="40" step="0.1" value="0" style="flex:1; min-width:160px;">
     <span id="timeLabel" style="min-width:70px; font-size:13px; color:#bbb;">0.0 ms</span>
@@ -136,7 +136,7 @@ HTML_TEMPLATE = r"""
       <span id="speedLabel">0.12×</span>
     </label>
   </div>
-  <div id="tabla" style="margin-top:6px;"></div>
+  <div id="tabla" style="margin-top:2px;"></div>
 </div>
 
 <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
@@ -410,7 +410,7 @@ render(0);
 """
 
 html_final = HTML_TEMPLATE.replace("__PARAMS__", json.dumps(params))
-components.html(html_final, height=1500, scrolling=True)
+components.html(html_final, height=900, scrolling=True)
 
 with st.expander("ℹ️ ¿Cómo se calculan las componentes simétricas?"):
     st.latex(r"""
