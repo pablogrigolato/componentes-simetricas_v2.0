@@ -54,6 +54,10 @@ def fasor_diagram(lim: float, title: str) -> go.Figure:
         showlegend=True,
         height=480,
         margin=dict(l=20, r=20, t=40, b=20),
+        # uirevision constante: Plotly conserva el estado de zoom/pan entre
+        # actualizaciones en vez de resetear la vista en cada redibujo.
+        uirevision="fasores",
+        transition=dict(duration=70, easing="linear"),
     )
     return fig
 
@@ -186,7 +190,7 @@ st.caption(
 # parte se vuelva a dibujar (sin recrear sliders ni recargar la
 # página completa), evitando el parpadeo de re-render total.
 # ------------------------------------------------------------------
-@st.fragment(run_every=0.08 if animar else None)
+@st.fragment(run_every=0.12 if animar else None)
 def render_simulacion():
     if animar:
         st.session_state.t_ms = (st.session_state.t_ms + 0.7) % 40.0
@@ -234,7 +238,9 @@ def render_simulacion():
         fig1t.add_vline(x=t * 1000, line_width=1, line_dash="dash", line_color="rgba(0,0,0,0.5)")
         fig1t.update_layout(title="Evolución temporal — sistema desbalanceado",
                              xaxis_title="Tiempo (ms)", yaxis_title="Amplitud",
-                             height=300, margin=dict(l=20, r=20, t=40, b=20))
+                             height=300, margin=dict(l=20, r=20, t=40, b=20),
+                             uirevision="onda_desbalanceada",
+                             transition=dict(duration=70, easing="linear"))
         st.plotly_chart(fig1t, use_container_width=True, config={"displaylogo": False},
                          key="fig1t")
 
@@ -269,7 +275,9 @@ def render_simulacion():
         fig2t.update_layout(title="Evolución temporal — secuencias",
                              xaxis_title="Tiempo (ms)",
                              height=300, margin=dict(l=20, r=20, t=40, b=20),
-                             legend=dict(font=dict(size=9)))
+                             legend=dict(font=dict(size=9)),
+                             uirevision="onda_secuencias",
+                             transition=dict(duration=70, easing="linear"))
         st.plotly_chart(fig2t, use_container_width=True, config={"displaylogo": False},
                          key="fig2t")
 
