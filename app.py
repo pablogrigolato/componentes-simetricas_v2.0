@@ -135,21 +135,25 @@ with st.sidebar.expander("Fase C", expanded=True):
     mag_C = slider_con_numero("Magnitud C", "mag_C", 0, 150, 110)
     ang_C = slider_con_numero("Ángulo C (°)", "ang_C", -180, 180, 120)
 
+def _aplicar_valores(defaults: dict):
+    for k, v in defaults.items():
+        st.session_state[f"{k}_sld"] = v
+        st.session_state[f"{k}_num"] = v
+
+
 st.sidebar.markdown("---")
 
 col_reset, col_bal = st.sidebar.columns(2)
-if col_reset.button("↺ Reset", use_container_width=True):
-    defaults = dict(mag_A=100, ang_A=0, mag_B=90, ang_B=-120, mag_C=110, ang_C=120)
-    for k, v in defaults.items():
-        st.session_state[f"{k}_sld"] = v
-        st.session_state[f"{k}_num"] = v
-    st.rerun()
-if col_bal.button("⚖ Balancear", use_container_width=True):
-    defaults = dict(mag_A=100, ang_A=0, mag_B=100, ang_B=-120, mag_C=100, ang_C=120)
-    for k, v in defaults.items():
-        st.session_state[f"{k}_sld"] = v
-        st.session_state[f"{k}_num"] = v
-    st.rerun()
+col_reset.button(
+    "↺ Reset", use_container_width=True,
+    on_click=_aplicar_valores,
+    args=({"mag_A": 100, "ang_A": 0, "mag_B": 90, "ang_B": -120, "mag_C": 110, "ang_C": 120},),
+)
+col_bal.button(
+    "⚖ Balancear", use_container_width=True,
+    on_click=_aplicar_valores,
+    args=({"mag_A": 100, "ang_A": 0, "mag_B": 100, "ang_B": -120, "mag_C": 100, "ang_C": 120},),
+)
 
 st.sidebar.markdown("---")
 
